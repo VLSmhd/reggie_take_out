@@ -9,6 +9,7 @@ import com.vls.reggie.service.UserService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpSession;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 @RequestMapping("/user")
 @Slf4j
@@ -25,6 +27,8 @@ public class UserController {
     @Autowired
     private UserService userService;
 
+    @Autowired
+    private RedisTemplate redisTemplate;
     @PostMapping("/sendMsg")
     public R<String> sendMsg(@RequestBody User user, HttpSession session){
         //获取手机号
@@ -35,8 +39,10 @@ public class UserController {
             log.info("code: {}", code);
             //调用API发送短信
             SMSUtils.sendMessage("瑞吉外卖vls", "SMS_271465529", phone, code);
-            //生成的验证码存到session
-            session.setAttribute(phone, code);
+//            //生成的验证码存到session
+//            session.setAttribute(phone, code);
+            //生成的验证码保存到redis中设置有效期五分钟
+            redisTemplate.opsForValue().set(phone, code, 5, TimeUnit.MINUTES);
             return R.success("发送验证码成功");
         }
         return R.error("发送验证码失败");
@@ -53,8 +59,11 @@ public class UserController {
         String phone = map.get("phone").toString();
         //获取验证码
         String code = map.get("code").toString();
-        //session获得验证码,比对
-        Object codeInSession = session.getAttribute(phone);
+//        //session获得验证码,比对
+//        Object codeInSession = session.getAttribute(phone);
+        //redis获得验证码
+        Object codeInSession = redisTemplate.opsForValue().get(phone);
+
         if(codeInSession != null && codeInSession.equals(code)){
             //登录成功,判断手机号是否在用户表,不在就自动注册
             LambdaQueryWrapper<User> lambdaQueryWrapper = new LambdaQueryWrapper<>();
@@ -66,6 +75,8 @@ public class UserController {
                 userService.save(user);
             }
             session.setAttribute("user", user.getId());
+            //如果用户登录成功，删除redis缓存验证码
+            redisTemplate.delete(phone);
             return R.success(user);
         }
         return R.error("短信发送失败");
