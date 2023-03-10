@@ -53,4 +53,4 @@ mybatis-plus:
       id-type: ASSIGN_ID
 
 reggie:
-  path: F:\Learn_project\reggie_file_upload_store\
+  path: /usr/local/img
